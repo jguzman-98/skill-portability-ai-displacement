@@ -1,11 +1,15 @@
 """
 Step 1: Process O*NET data into a unified skill matrix.
 
-Loads Skills, Abilities, and Knowledge from O*NET 30.1,
-filters to Level scale, aggregates detailed SOC codes to 6-digit,
-pivots wide, and min-max normalizes each dimension.
+Loads Skills, Abilities, and Knowledge from O*NET 30.1 (Level scale only),
+plus Work Activities (both Level and Importance scales), aggregates
+detailed SOC codes to 6-digit, pivots wide, and min-max normalizes
+each dimension.
 
-Output: data/onet_skill_matrix.csv (~500 SOC codes × ~120 dimensions)
+Output: data/onet_skill_matrix.csv (~500 SOC codes × ~202 dimensions)
+  - 35 skills, 52 abilities, 33 knowledge (LV scale) = 120
+  - 41 work activities × 2 scales (LV + IM)           =  82
+  - Total                                              = 202
 """
 
 import pandas as pd
@@ -16,34 +20,55 @@ ONET_DIR = Path("/Users/jacobguzman/Downloads/capstone/data/raw/db_30_1_text")
 OUT_DIR = Path(__file__).parent / "data"
 OUT_DIR.mkdir(exist_ok=True)
 
-FILES = {
+# Files using Level (LV) scale only
+FILES_LV = {
     "skill": ONET_DIR / "Skills.txt",
     "ability": ONET_DIR / "Abilities.txt",
     "knowledge": ONET_DIR / "Knowledge.txt",
 }
 
+# Work Activities uses both Level (LV) and Importance (IM) scales
+WORK_ACTIVITIES_PATH = ONET_DIR / "Work Activities.txt"
 
-def load_onet_file(path: Path, prefix: str) -> pd.DataFrame:
-    """Load one O*NET file, filter to LV scale, clean SOC codes."""
+
+def load_onet_file(path: Path, prefix: str, scales: list[str] = None) -> pd.DataFrame:
+    """Load one O*NET file, filter to specified scales, clean SOC codes.
+
+    When multiple scales are given (e.g. LV + IM for Work Activities),
+    the scale abbreviation is embedded in the dimension name to keep
+    them distinct.
+    """
+    if scales is None:
+        scales = ["LV"]
     df = pd.read_csv(path, sep="\t")
-    # Filter to Level scale and non-suppressed
-    df = df[(df["Scale ID"] == "LV") & (df["Recommend Suppress"] == "N")].copy()
+    df = df[(df["Scale ID"].isin(scales)) & (df["Recommend Suppress"] == "N")].copy()
     # Strip .XX suffix to get 6-digit SOC
     df["soc6"] = df["O*NET-SOC Code"].str.replace(r"\.\d+$", "", regex=True)
-    # Prefix element name to avoid collisions across files
-    df["dimension"] = prefix + "_" + df["Element Name"].str.lower().str.replace(r"[^a-z0-9]+", "_", regex=True).str.strip("_")
+    # Build dimension name: include scale suffix when using multiple scales
+    element_clean = df["Element Name"].str.lower().str.replace(r"[^a-z0-9]+", "_", regex=True).str.strip("_")
+    if len(scales) > 1:
+        df["dimension"] = prefix + "_" + df["Scale ID"].str.lower() + "_" + element_clean
+    else:
+        df["dimension"] = prefix + "_" + element_clean
     df["value"] = df["Data Value"].astype(float)
     return df[["soc6", "dimension", "value"]]
 
 
 def main():
-    # Load all three files
+    # Load Skills, Abilities, Knowledge (LV scale only)
     frames = []
-    for prefix, path in FILES.items():
+    for prefix, path in FILES_LV.items():
         print(f"Loading {prefix} from {path.name}...")
-        df = load_onet_file(path, prefix)
+        df = load_onet_file(path, prefix, scales=["LV"])
         print(f"  {len(df)} rows, {df['dimension'].nunique()} dimensions, {df['soc6'].nunique()} SOC codes")
         frames.append(df)
+
+    # Load Work Activities (both LV and IM scales → 41 × 2 = 82 dimensions)
+    print(f"Loading work activities from {WORK_ACTIVITIES_PATH.name} (LV + IM)...")
+    df_wa = load_onet_file(WORK_ACTIVITIES_PATH, "activity", scales=["LV", "IM"])
+    print(f"  {len(df_wa)} rows, {df_wa['dimension'].nunique()} dimensions, {df_wa['soc6'].nunique()} SOC codes")
+    frames.append(df_wa)
+
     combined = pd.concat(frames, ignore_index=True)
     print(f"\nCombined: {len(combined)} rows, {combined['dimension'].nunique()} dimensions")
 

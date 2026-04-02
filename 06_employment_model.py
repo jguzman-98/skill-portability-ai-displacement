@@ -2,8 +2,13 @@
 Step 6: Triple-Difference Employment Model.
 
 Maps AI exposure (Eloundou et al.) from SOC codes to Census 2018 codes,
-aggregates pair-level skill portability to occupation level, builds the
-occupation × year panel, and estimates:
+aggregates pair-level skill portability to occupation level using
+employment-share-weighted sum per spec equations (5)-(6):
+
+  Portability_o = Σ_d  ω_d × Predicted_Switches_{o,d}
+  ω_d = Emp_Share_d
+
+Builds the occupation × year panel and estimates:
 
   ln(Emp_ot) = α_o + δ_t + β₁(Post_t × AIExposure_o)
              + β₂(Post_t × SkillPortability_o)
@@ -37,7 +42,8 @@ CROSSWALK_PATH = Path(
     "/Users/jacobguzman/Downloads/"
     "2018-occupation-code-list-and-crosswalk.xlsx - 2018 Census Occ Code List.csv"
 )
-EMPLOYMENT_PATH = DATA / "employment_counts.csv"
+# Weighted employment for panel and portability aggregation (eqs 5-7)
+EMPLOYMENT_WEIGHTED_PATH = DATA / "employment_counts_weighted.csv"
 PORTABILITY_PATH = OUTPUT / "skill_portability_predictions.csv"
 
 
@@ -157,38 +163,60 @@ def build_ai_exposure_by_census():
 # ═══════════════════════════════════════════════════════════════════════════
 
 def aggregate_portability():
-    """Compute occupation-level portability from pair-level predictions."""
+    """Compute occupation-level portability per spec equations (5)-(6).
+
+    Portability_o = Σ_d  ω_d × Predicted_Switches_{o,d}
+    ω_d = Emp_Share_d  (weighted employment share of destination)
+    """
     print("\n" + "=" * 70)
     print("STEP 2: Aggregate Portability to Occupation Level")
     print("=" * 70)
 
     pairs = pd.read_csv(PORTABILITY_PATH)
+    pairs["occ_origin"] = pairs["occ_origin"].apply(norm_code)
+    pairs["occ_dest"] = pairs["occ_dest"].apply(norm_code)
     print(f"Loaded {len(pairs):,} pair-level predictions, "
           f"{pairs['occ_origin'].nunique()} unique origins")
 
-    # Top-10 portability: mean of top-10 destinations per origin
-    def top10_mean(group):
-        return group.nlargest(10).mean()
+    # Determine which prediction column to use (best ML model or switches)
+    # Prefer ML predictions; fall back to raw switches if unavailable
+    ml_cols = [c for c in pairs.columns if c.startswith("ml_dist_")]
+    if ml_cols:
+        pred_col = ml_cols[0]  # Use first ML model's predictions
+        print(f"  Using prediction column: {pred_col}")
+    else:
+        pred_col = "switches"
+        print(f"  No ML predictions found, using raw switches")
 
-    agg = pairs.groupby("occ_origin")["skill_portability_predicted"].agg(
-        portability_mean="mean",
-        portability_max="max",
-    ).reset_index()
+    # Load weighted employment for ω_d = Emp_Share_d (eq 6 uses weights)
+    emp_w = pd.read_csv(EMPLOYMENT_WEIGHTED_PATH)
+    emp_w["occ"] = emp_w["occ"].apply(norm_code)
+    emp_pooled = emp_w.groupby("occ")["weighted_employment"].sum().reset_index()
+    total_emp = emp_pooled["weighted_employment"].sum()
+    emp_pooled["emp_share"] = emp_pooled["weighted_employment"] / total_emp
 
-    top10 = (pairs.groupby("occ_origin")["skill_portability_predicted"]
-             .apply(top10_mean)
-             .reset_index(name="portability_top10"))
+    # Merge employment share of destination onto pairs
+    pairs = pairs.merge(
+        emp_pooled[["occ", "emp_share"]].rename(columns={"occ": "occ_dest"}),
+        on="occ_dest", how="left"
+    )
+    pairs["emp_share"] = pairs["emp_share"].fillna(0)
 
-    agg = agg.merge(top10, on="occ_origin")
+    # Portability_o = Σ_d  ω_d × Predicted_Switches_{o,d}
+    pairs["weighted_pred"] = pairs["emp_share"] * pairs[pred_col]
+    agg = (pairs.groupby("occ_origin")["weighted_pred"]
+           .sum()
+           .reset_index()
+           .rename(columns={"weighted_pred": "portability"}))
     agg["occ"] = agg["occ_origin"].apply(norm_code)
 
+    # Standardize for interpretability
+    agg["portability_z"] = (agg["portability"] - agg["portability"].mean()) / agg["portability"].std()
+
     print(f"Portability aggregated for {len(agg)} occupations")
-    print(f"  portability_mean:  [{agg['portability_mean'].min():.6f}, "
-          f"{agg['portability_mean'].max():.6f}]")
-    print(f"  portability_max:   [{agg['portability_max'].min():.6f}, "
-          f"{agg['portability_max'].max():.6f}]")
-    print(f"  portability_top10: [{agg['portability_top10'].min():.6f}, "
-          f"{agg['portability_top10'].max():.6f}]")
+    print(f"  portability: mean={agg['portability'].mean():.6f}, "
+          f"std={agg['portability'].std():.6f}")
+    print(f"  range: [{agg['portability'].min():.6f}, {agg['portability'].max():.6f}]")
     return agg
 
 
@@ -202,8 +230,8 @@ def build_panel(ai_exposure: pd.DataFrame, portability: pd.DataFrame):
     print("STEP 3: Build Occupation × Year Panel")
     print("=" * 70)
 
-    # Load employment
-    emp = pd.read_csv(EMPLOYMENT_PATH)
+    # Load weighted employment for the panel
+    emp = pd.read_csv(EMPLOYMENT_WEIGHTED_PATH)
     emp["occ"] = emp["occ"].apply(norm_code)
     print(f"Employment: {len(emp)} rows, {emp['occ'].nunique()} occs, "
           f"years {sorted(emp['year'].unique())}")
@@ -217,14 +245,14 @@ def build_panel(ai_exposure: pd.DataFrame, portability: pd.DataFrame):
     n_ai = panel.dropna(subset=["gpt4_beta"])["occ"].nunique()
     print(f"After AI exposure merge: {n_ai}/{n_before} occs have exposure data")
 
-    # Merge portability
-    port_cols = ["occ", "portability_mean", "portability_max", "portability_top10"]
+    # Merge portability (single column from eq 5-6)
+    port_cols = ["occ", "portability"]
     panel = panel.merge(portability[port_cols], on="occ", how="left")
-    n_port = panel.dropna(subset=["portability_mean"])["occ"].nunique()
+    n_port = panel.dropna(subset=["portability"])["occ"].nunique()
     print(f"After portability merge: {n_port}/{n_before} occs have portability data")
 
     # Drop rows missing either, or with zero employment (can't take log)
-    panel = panel.dropna(subset=["gpt4_beta", "portability_mean"])
+    panel = panel.dropna(subset=["gpt4_beta", "portability"])
     n_zero = (panel["weighted_employment"] <= 0).sum()
     if n_zero > 0:
         print(f"Dropping {n_zero} rows with zero employment")
@@ -239,14 +267,15 @@ def build_panel(ai_exposure: pd.DataFrame, portability: pd.DataFrame):
     # Standardize continuous treatment variables for interpretability
     for col in EXPOSURE_COLS:
         panel[f"{col}_z"] = (panel[col] - panel[col].mean()) / panel[col].std()
-    for col in ["portability_mean", "portability_max", "portability_top10"]:
-        panel[f"{col}_z"] = (panel[col] - panel[col].mean()) / panel[col].std()
+    panel["portability_z"] = (
+        (panel["portability"] - panel["portability"].mean()) / panel["portability"].std()
+    )
 
     # Interactions (using standardized versions)
     panel["post_x_ai"] = panel["post"] * panel["gpt4_beta_z"]
-    panel["post_x_port"] = panel["post"] * panel["portability_mean_z"]
+    panel["post_x_port"] = panel["post"] * panel["portability_z"]
     panel["post_x_ai_x_port"] = (
-        panel["post"] * panel["gpt4_beta_z"] * panel["portability_mean_z"]
+        panel["post"] * panel["gpt4_beta_z"] * panel["portability_z"]
     )
 
     print(f"\nPanel summary:")
@@ -269,14 +298,12 @@ def estimate_main(panel: pd.DataFrame):
 
     results_list = []
 
-    # Primary specification: gpt4_beta × portability_mean
+    # Primary specification: gpt4_beta × portability
     spec_configs = [
         # (label, ai_col, port_col)
-        ("primary", "gpt4_beta_z", "portability_mean_z"),
-        ("robustness_automation", "automation_z", "portability_mean_z"),
-        ("robustness_human_beta", "human_beta_z", "portability_mean_z"),
-        ("robustness_port_max", "gpt4_beta_z", "portability_max_z"),
-        ("robustness_port_top10", "gpt4_beta_z", "portability_top10_z"),
+        ("primary", "gpt4_beta_z", "portability_z"),
+        ("robustness_automation", "automation_z", "portability_z"),
+        ("robustness_human_beta", "human_beta_z", "portability_z"),
     ]
 
     for label, ai_col, port_col in spec_configs:
@@ -374,9 +401,9 @@ def estimate_event_study(panel: pd.DataFrame):
     for yr in event_years:
         yr_ind = (panel["year"] == yr).astype(float)
         interaction_cols[f"yr{yr}_x_ai"] = yr_ind * panel["gpt4_beta_z"]
-        interaction_cols[f"yr{yr}_x_port"] = yr_ind * panel["portability_mean_z"]
+        interaction_cols[f"yr{yr}_x_port"] = yr_ind * panel["portability_z"]
         interaction_cols[f"yr{yr}_x_ai_x_port"] = (
-            yr_ind * panel["gpt4_beta_z"] * panel["portability_mean_z"]
+            yr_ind * panel["gpt4_beta_z"] * panel["portability_z"]
         )
 
     X_interactions = pd.DataFrame(interaction_cols)

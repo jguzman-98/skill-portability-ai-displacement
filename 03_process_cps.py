@@ -2,14 +2,22 @@
 Step 3: Process CPS switching data from IPUMS extract.
 
 Loads the CPS extract (with OCC variable), filters to 2020+ ASEC respondents,
-identifies switchers vs stayers, and builds directional switching counts
-and employment counts by occupation.
+identifies switchers vs stayers using exact occupation code comparison
+(no adjacent-code filtering), and builds directional switching counts
+using raw (unweighted) person counts.
+
+Weighted versions of employment and state employment are also produced
+for use in the portability aggregation (equations 6-7 in the spec).
 
 Outputs:
-  data/switching_matrix.csv   — (occ_origin, occ_dest, weighted_switches)
-  data/stayer_counts.csv      — (occ, weighted_stayers)
-  data/employment_counts.csv  — (occ, year, weighted_employment)
-  data/state_employment.csv   — (statefip, occ, weighted_employment)
+  data/switching_matrix.csv              — (occ_origin, occ_dest, switches) raw counts
+  data/total_switchers_out.csv           — (occ, total_switches_out) raw counts per origin
+  data/switching_matrix_by_year.csv      — (occ_origin, occ_dest, year, switches) year-level
+  data/total_switchers_out_by_year.csv   — (occ, year, total_switches_out) year-level
+  data/stayer_counts.csv                 — (occ, stayers) raw counts
+  data/employment_counts.csv             — (occ, year, employment) raw counts
+  data/employment_counts_weighted.csv    — (occ, year, weighted_employment) for eq 6-7
+  data/state_employment.csv              — (statefip, occ, weighted_employment) for geographic distance
 """
 
 import pandas as pd
@@ -23,10 +31,6 @@ OUT_DIR.mkdir(exist_ok=True)
 # Military / invalid occupation codes to exclude
 # 9800-9840 covers all armed forces codes; 9920 = unemployment
 INVALID_OCC = {0, 9920} | set(range(9800, 9841))
-
-# Adjacent-code threshold: treat |OCC - OCCLY| <= this value as coding noise,
-# not a real switch.  Reclassified as stayers.
-ADJACENT_CODE_THRESHOLD = 10
 
 
 def main():
@@ -64,107 +68,104 @@ def main():
     df = df[(df["OCC"] != 0) & (df["OCCLY"] != 0)]
     print(f"  After valid OCC/OCCLY: {len(df):,}")
 
-    # Use ASECWT as weight
-    df["wt"] = df["ASECWT"]
+    # --- Classify switchers vs stayers (exact code comparison, no adjacent-code filter) ---
+    df["is_switcher"] = df["OCC"] != df["OCCLY"]
 
-    # --- Classify switchers vs stayers ---
-    # A "real" switch requires OCC != OCCLY AND codes differ by more than
-    # ADJACENT_CODE_THRESHOLD.  Adjacent-code differences are treated as
-    # coding noise and reclassified as stayers.
-    df["_code_diff"] = (df["OCC"] - df["OCCLY"]).abs()
-    df["_is_real_switch"] = (df["OCC"] != df["OCCLY"]) & (
-        df["_code_diff"] > ADJACENT_CODE_THRESHOLD
-    )
+    switchers = df[df["is_switcher"]].copy()
+    stayers = df[~df["is_switcher"]].copy()
 
-    adjacent_noise = df[(df["OCC"] != df["OCCLY"]) & ~df["_is_real_switch"]]
-    print(f"\n  Adjacent-code switches reclassified as stayers: "
-          f"{adjacent_noise['wt'].sum():,.0f} weighted ({len(adjacent_noise):,} rows, "
-          f"|OCC-OCCLY| <= {ADJACENT_CODE_THRESHOLD})")
-
-    # --- Switching matrix (weighted) ---
-    switchers = df[df["_is_real_switch"]].copy()
+    # --- Switching matrix (raw person counts, unweighted) ---
     switching_matrix = (
-        switchers.groupby(["OCCLY", "OCC"])["wt"]
-        .sum()
-        .reset_index()
-        .rename(columns={"OCCLY": "occ_origin", "OCC": "occ_dest", "wt": "weighted_switches"})
-    )
-    print(f"\nSwitching matrix (weighted): {len(switching_matrix):,} directed pairs")
-    print(f"  Total weighted switchers: {switching_matrix['weighted_switches'].sum():,.0f}")
-
-    # --- Switching matrix (unweighted — raw person counts) ---
-    switching_matrix_uw = (
         switchers.groupby(["OCCLY", "OCC"])
         .size()
-        .reset_index(name="raw_switches")
+        .reset_index(name="switches")
         .rename(columns={"OCCLY": "occ_origin", "OCC": "occ_dest"})
     )
-    print(f"\nSwitching matrix (unweighted): {len(switching_matrix_uw):,} directed pairs")
-    print(f"  Total raw switchers: {switching_matrix_uw['raw_switches'].sum():,}")
+    print(f"\nSwitching matrix: {len(switching_matrix):,} directed pairs")
+    print(f"  Total switchers: {switching_matrix['switches'].sum():,}")
 
-    # --- Stayer counts (weighted) ---
-    # Stayers = same OCC/OCCLY + adjacent-code noise
-    stayers = df[~df["_is_real_switch"]].copy()
-    stayer_counts = (
-        stayers.groupby("OCC")["wt"]
+    # --- Total switchers out of each origin (Switches_{o,d*} in the spec) ---
+    total_switches_out = (
+        switching_matrix.groupby("occ_origin")["switches"]
         .sum()
         .reset_index()
-        .rename(columns={"OCC": "occ", "wt": "weighted_stayers"})
+        .rename(columns={"occ_origin": "occ", "switches": "total_switches_out"})
     )
-    print(f"\nStayer counts (weighted): {len(stayer_counts):,} occupations")
-    print(f"  Total weighted stayers: {stayer_counts['weighted_stayers'].sum():,.0f}")
+    print(f"\nTotal switchers out: {len(total_switches_out):,} occupations")
 
-    # --- Stayer counts (unweighted — raw person counts) ---
-    stayer_counts_uw = (
+    # --- Switching matrix by year (for year fixed effects) ---
+    switching_matrix_by_year = (
+        switchers.groupby(["OCCLY", "OCC", "YEAR"])
+        .size()
+        .reset_index(name="switches")
+        .rename(columns={"OCCLY": "occ_origin", "OCC": "occ_dest", "YEAR": "year"})
+    )
+    print(f"\nSwitching matrix by year: {len(switching_matrix_by_year):,} directed pair-year cells")
+
+    total_out_by_year = (
+        switching_matrix_by_year.groupby(["occ_origin", "year"])["switches"]
+        .sum()
+        .reset_index()
+        .rename(columns={"occ_origin": "occ", "switches": "total_switches_out"})
+    )
+    print(f"Total switchers out by year: {len(total_out_by_year):,} occ-year cells")
+
+    # --- Stayer counts (raw person counts) ---
+    stayer_counts = (
         stayers.groupby("OCC")
         .size()
-        .reset_index(name="raw_stayers")
+        .reset_index(name="stayers")
         .rename(columns={"OCC": "occ"})
     )
-    print(f"\nStayer counts (unweighted): {len(stayer_counts_uw):,} occupations")
-    print(f"  Total raw stayers: {stayer_counts_uw['raw_stayers'].sum():,}")
+    print(f"\nStayer counts: {len(stayer_counts):,} occupations")
+    print(f"  Total stayers: {stayer_counts['stayers'].sum():,}")
 
-    # --- Employment counts by occ × year ---
+    # --- Employment counts by occ × year (raw person counts) ---
     emp_counts = (
-        df.groupby(["OCC", "YEAR"])["wt"]
-        .sum()
-        .reset_index()
-        .rename(columns={"OCC": "occ", "YEAR": "year", "wt": "weighted_employment"})
+        df.groupby(["OCC", "YEAR"])
+        .size()
+        .reset_index(name="employment")
+        .rename(columns={"OCC": "occ", "YEAR": "year"})
     )
-    print(f"\nEmployment counts: {len(emp_counts):,} occ-year cells")
+    print(f"\nEmployment counts (unweighted): {len(emp_counts):,} occ-year cells")
 
-    # --- State employment counts (pooled across years) ---
-    state_emp = (
-        df.groupby(["STATEFIP", "OCC"])["wt"]
+    # --- Employment counts by occ × year (weighted, for portability aggregation eqs 6-7) ---
+    emp_counts_weighted = (
+        df.groupby(["OCC", "YEAR"])["ASECWT"]
         .sum()
         .reset_index()
-        .rename(columns={"STATEFIP": "statefip", "OCC": "occ", "wt": "weighted_employment"})
+        .rename(columns={"OCC": "occ", "YEAR": "year", "ASECWT": "weighted_employment"})
+    )
+    print(f"Employment counts (weighted): {len(emp_counts_weighted):,} occ-year cells")
+
+    # --- State employment counts (weighted, for geographic distance) ---
+    state_emp = (
+        df.groupby(["STATEFIP", "OCC"])["ASECWT"]
+        .sum()
+        .reset_index()
+        .rename(columns={"STATEFIP": "statefip", "OCC": "occ", "ASECWT": "weighted_employment"})
     )
     print(f"State employment: {len(state_emp):,} state-occ cells")
 
     # --- Sanity checks ---
-    total_employed = df["wt"].sum()
-    total_switchers_w = switching_matrix["weighted_switches"].sum()
-    total_stayers_w = stayer_counts["weighted_stayers"].sum()
-    switch_rate_w = total_switchers_w / (total_switchers_w + total_stayers_w) * 100
-
-    total_switchers_uw = switching_matrix_uw["raw_switches"].sum()
-    total_stayers_uw = stayer_counts_uw["raw_stayers"].sum()
-    switch_rate_uw = total_switchers_uw / (total_switchers_uw + total_stayers_uw) * 100
+    total_switchers = switching_matrix["switches"].sum()
+    total_stayers = stayer_counts["stayers"].sum()
+    switch_rate = total_switchers / (total_switchers + total_stayers) * 100
 
     print(f"\nSanity checks:")
-    print(f"  Total weighted employed: {total_employed:,.0f}")
-    print(f"  Switcher share (weighted):   {switch_rate_w:.1f}%")
-    print(f"  Switcher share (unweighted): {switch_rate_uw:.1f}%")
+    print(f"  Total persons: {len(df):,}")
+    print(f"  Switcher share: {switch_rate:.1f}%")
     print(f"  Unique occupations (OCC): {df['OCC'].nunique()}")
     print(f"  Unique occupations (OCCLY): {df['OCCLY'].nunique()}")
 
     # --- Save ---
     switching_matrix.to_csv(OUT_DIR / "switching_matrix.csv", index=False)
-    switching_matrix_uw.to_csv(OUT_DIR / "switching_matrix_unweighted.csv", index=False)
+    total_switches_out.to_csv(OUT_DIR / "total_switchers_out.csv", index=False)
+    switching_matrix_by_year.to_csv(OUT_DIR / "switching_matrix_by_year.csv", index=False)
+    total_out_by_year.to_csv(OUT_DIR / "total_switchers_out_by_year.csv", index=False)
     stayer_counts.to_csv(OUT_DIR / "stayer_counts.csv", index=False)
-    stayer_counts_uw.to_csv(OUT_DIR / "stayer_counts_unweighted.csv", index=False)
     emp_counts.to_csv(OUT_DIR / "employment_counts.csv", index=False)
+    emp_counts_weighted.to_csv(OUT_DIR / "employment_counts_weighted.csv", index=False)
     state_emp.to_csv(OUT_DIR / "state_employment.csv", index=False)
     print(f"\nAll outputs saved to {OUT_DIR}/")
 
