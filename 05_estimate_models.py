@@ -148,14 +148,19 @@ def _build_rhs(df, skill_dist_col):
 
 def run_equation1(df, skill_dist_col, skill_dist_label, results_list,
                   specification="baseline"):
-    """Run equation (1) for one skill distance variant, both OLS and PPML."""
+    """Run equation (1) for one skill distance variant, both OLS and PPML.
+
+    Returns dict of {estimator_name: fitted_model} for successfully estimated models.
+    """
 
     X_df = _build_rhs(df, skill_dist_col)
     y = df["switches"].values
+    fitted = {}
 
     for estimator_name, estimator_fn in [("OLS_log", estimate_ols), ("PPML", estimate_ppml)]:
         try:
             model = estimator_fn(y, X_df, f"{skill_dist_label}_{estimator_name}")
+            fitted[estimator_name] = model
 
             # Extract skill_distance coefficient
             beta1 = model.params["skill_distance"]
@@ -193,6 +198,8 @@ def run_equation1(df, skill_dist_col, skill_dist_label, results_list,
                 "p_beta1": np.nan,
                 "n_obs": len(y),
             })
+
+    return fitted
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -391,9 +398,10 @@ def main():
 
     all_measures = {**direct_measures, **ml_measures}
 
+    baseline_models = {}
     for label, col in all_measures.items():
         print(f"\n  Skill Distance: {label}")
-        run_equation1(df, col, label, results_list)
+        baseline_models[label] = run_equation1(df, col, label, results_list)
 
     # --- Part C: Compare baseline results ---
     print("\n" + "=" * 70)
@@ -414,42 +422,28 @@ def main():
     print(f"\n  Best OLS:  {best_ols['skill_distance']} (R²={best_ols['R2']:.4f})")
     print(f"  Best PPML: {best_ppml['skill_distance']} (R²={best_ppml['R2']:.4f})")
 
-    # --- Part D: Additional Checks ---
+    # --- Part D: Additional Checks (all 6 skill distance variants) ---
     print("\n" + "=" * 70)
-    print("PART D: Additional Checks")
+    print("PART D: Additional Checks (all 6 skill distance variants)")
     print("=" * 70)
 
-    # Use the best direct measure for additional checks
-    best_direct_label = "euclidean"
-    best_direct_col = "euclidean_dist"
+    for label, col in all_measures.items():
+        print(f"\n  {'─' * 60}")
+        print(f"  Skill Distance: {label}")
+        print(f"  {'─' * 60}")
 
-    # Check 3a: Fix δ₁ = 1
-    print(f"\n  Check 3a: Fix δ₁ = 1 (Skill Distance: {best_direct_label})")
-    run_fixed_delta1(df, best_direct_col, best_direct_label, results_list)
+        # Check 3a: Fix δ₁ = 1
+        print(f"\n  Check 3a: Fix δ₁ = 1")
+        run_fixed_delta1(df, col, label, results_list)
 
-    # Check 3b: Remove small occupations
-    for threshold in [100, 500]:
-        print(f"\n  Check 3b: No small occs (threshold={threshold}, "
-              f"Skill Distance: {best_direct_label})")
-        run_no_small_occs(df, best_direct_col, best_direct_label,
-                          results_list, threshold)
+        # Check 3b: Remove small occupations
+        for threshold in [100, 500]:
+            print(f"\n  Check 3b: No small occs (threshold={threshold})")
+            run_no_small_occs(df, col, label, results_list, threshold)
 
-    # Check 3c: Two-part model for zero-inflation
-    print(f"\n  Check 3c: Two-part model (Skill Distance: {best_direct_label})")
-    run_zero_inflated(df, best_direct_col, best_direct_label, results_list)
-
-    # Also run additional checks for factor_analysis (second direct measure)
-    print(f"\n  Check 3a: Fix δ₁ = 1 (Skill Distance: factor_analysis)")
-    run_fixed_delta1(df, "factor_dist", "factor_analysis", results_list)
-
-    for threshold in [100, 500]:
-        print(f"\n  Check 3b: No small occs (threshold={threshold}, "
-              f"Skill Distance: factor_analysis)")
-        run_no_small_occs(df, "factor_dist", "factor_analysis",
-                          results_list, threshold)
-
-    print(f"\n  Check 3c: Two-part model (Skill Distance: factor_analysis)")
-    run_zero_inflated(df, "factor_dist", "factor_analysis", results_list)
+        # Check 3c: Two-part model for zero-inflation
+        print(f"\n  Check 3c: Two-part model (logit + OLS positives)")
+        run_zero_inflated(df, col, label, results_list)
 
     # --- Part E: Year Fixed Effects ---
     print("\n" + "=" * 70)
@@ -515,6 +509,18 @@ def main():
     for label, col in all_measures.items():
         pred_cols.append(col)
     pred_df = df[pred_cols].copy()
+
+    # Add Equation 1 fitted values (ŷ) from best PPML model for Equation 5 aggregation.
+    # Use np.asarray(...) to force positional alignment: .mu may be a pandas Series
+    # whose index wouldn't match pred_df's (post-dropna) index.
+    best_ppml_label = best_ppml['skill_distance']
+    if best_ppml_label in baseline_models and "PPML" in baseline_models[best_ppml_label]:
+        best_ppml_model = baseline_models[best_ppml_label]["PPML"]
+        pred_df["predicted_switches"] = np.asarray(best_ppml_model.mu)
+        print(f"  Equation 1 fitted values from {best_ppml_label}/PPML saved as 'predicted_switches'")
+    else:
+        print(f"  WARNING: Could not extract PPML fitted values for {best_ppml_label}")
+
     pred_df.to_csv(OUT_DIR / "skill_portability_predictions.csv", index=False)
     print(f"  Predictions saved: {len(pred_df):,} pairs")
 

@@ -193,8 +193,15 @@ def estimate_downturn_model(trend_df, ltu_df):
     total_emp = emp_pooled["weighted_employment"].sum()
     emp_pooled["emp_share"] = emp_pooled["weighted_employment"] / total_emp
 
-    ml_cols = [c for c in pairs.columns if c.startswith("ml_dist_")]
-    pred_col = ml_cols[0] if ml_cols else "switches"
+    # Use Equation 1 fitted values (ŷ) for Equation 5 aggregation
+    if "predicted_switches" in pairs.columns:
+        pred_col = "predicted_switches"
+        print(f"  Using '{pred_col}' (Equation 1 PPML fitted values) for aggregation")
+    else:
+        ml_cols = [c for c in pairs.columns if c.startswith("ml_dist_")]
+        pred_col = ml_cols[0] if ml_cols else "switches"
+        print(f"  WARNING: 'predicted_switches' not found — re-run Step 5.")
+        print(f"  Falling back to '{pred_col}'")
 
     pairs = pairs.merge(
         emp_pooled[["occ", "emp_share"]].rename(columns={"occ": "occ_dest"}),

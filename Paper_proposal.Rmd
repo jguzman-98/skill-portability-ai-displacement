@@ -1,0 +1,144 @@
+---
+title: "Paper proposal"
+output:
+  pdf_document: default
+  html_document: default
+date: "2026-03-28"
+---
+# The Effect of PFAS Contamination on U.S. Housing Prices
+## Research Outline
+
+---
+
+## 1. Basic Idea
+
+**Research question:** Does the public disclosure of per- and polyfluoroalkyl substance (PFAS) contamination in drinking water reduce residential property values?
+
+**Core argument:** PFAS contamination represents a large-scale, under-studied environmental disamenity. The EPA's UCMR3 testing program (2013-2015) and subsequent public release of results (2016) constitute an exogenous information shock: millions of Americans learned for the first time that their tap water contained detectable levels of "forever chemicals" linked to cancer, thyroid disease, and reproductive harm.
+
+1. **National analysis:** The UCMR3 information shock (2016) affecting 583 ZIP codes across 35+ states
+2. **Case study:** The DuPont C8 litigation in the mid-Ohio Valley (2001-2005), the most documented PFAS contamination event in U.S. history, where no prior hedonic study exists
+
+**Why it matters:**
+- The EPA finalized the first legally enforceable PFAS drinking water standards in April 2024 (4 ppt for PFOA/PFOS), with compliance due by 2029 — triggering nationwide testing, disclosure, and remediation
+- Over 100 million Americans may be exposed to PFAS-contaminated drinking water (Andrews & Naidenko, 2020)
+- Quantifying the housing price effect informs damage calculations, remediation cost-benefit analysis, and environmental justice policy
+- The DuPont Washington Works case — despite being the catalyst for national PFAS regulation, a $671M litigation, and a major film (*Dark Waters*) — has never been studied with hedonic methods
+
+---
+
+## 2. Literature and Citations
+
+
+1. **Rosen, S. (1974).** "Hedonic Prices and Implicit Markets: Product Differentiation in Pure Competition." *Journal of Political Economy*, 82(1), 34-55.
+   - Foundational framework: housing prices implicitly reveal willingness to pay for bundled attributes, including environmental quality.
+
+2. **Greenstone, M. and Gallagher, J. (2008).** "Does Hazardous Waste Matter? Evidence from the Housing Market and the Superfund Program." *Quarterly Journal of Economics*, 123(3), 951-1003.
+   - Superfund site proximity depresses housing values; cleanups produce capitalization gains of 18.7-24.5%.
+
+3. **Currie, J., Davis, L., Greenstone, M., and Walker, R. (2015).** "Environmental Health Risks and Housing Values: Evidence from 1,600 Toxic Plant Openings and Closings." *American Economic Review*, 105(2), 678-709.
+   - Toxic plant openings reduce housing values by 11% within 0.5 miles; effects depend on visibility and information salience.
+
+4. **Davis, L.W. (2004).** "The Effect of Health Risk on Housing Values: Evidence from a Cancer Cluster." *American Economic Review*, 94(5), 1693-1704.
+   - Cancer cluster reports in Nevada triggered a 15% price decline — demonstrating that *information*, not contamination per se, drives capitalization.
+
+5. **Chay, K.Y. and Greenstone, M. (2005).** "Does Air Quality Matter? Evidence from the Housing Market." *Journal of Political Economy*, 113(2), 376-424.
+   - Clean Air Act nonattainment designation as quasi-experiment; TSP reductions capitalized into $45B aggregate housing value gains.
+
+6. **Keiser, D.A. and Shapiro, J.S. (2019).** "Consequences of the Clean Water Act and the Demand for Water Quality." *Quarterly Journal of Economics*, 134(1), 349-396.
+   - Most comprehensive U.S. water pollution dataset; Clean Water Act grants improved quality but housing value gains were modest relative to costs.
+
+7. **Marcus, M.M. and Mueller, R. (2024).** "Unregulated Contaminants in Drinking Water: Evidence from PFAS and Housing Prices." *Journal of Environmental Economics and Management*, 125. (NBER WP 31731.)
+   - Paulsboro, NJ PFAS contamination reduced housing values by 31-42% with high media coverage; evidence of residential sorting exacerbating environmental inequality.
+
+8. **Islam, M.T. and Heintzelman, M.D. (2023).** "Perceptions of Risk: The Impacts of PFAS Contamination on Local Property Values." *SSRN Working Paper* No. 4547307.
+   - 157,817 transactions in Bucks/Montgomery Co., PA; PFAS contamination reduced property values by 1.4-2.8% within affected water service areas.
+
+9. **Wang, M. (2025).** "PFAS Contamination Disclosures and Declining Residential Land Prices in Polluted Areas of Japan." *SSRN Working Paper* No. 5285846.
+    - International evidence: PFAS disclosures reduced residential land prices in Japan, broadening the external validity of U.S. findings.
+
+10. **Stohr, C. (2021).** "Real Estate Damage Economics: The Impact of PFAS 'Forever Chemicals' on Real Estate Valuation." *Environmental Claims Journal*, 33(3), 207-226.
+    - Documents channels through which PFAS damages property values: stigma, remediation costs, and disclosure obligations.
+
+11. **Fenton, S.E., Ducatman, A., Boobis, A., et al. (2021).** "Per- and Polyfluoroalkyl Substance Toxicity and Human Health Review." *Environmental Toxicology and Chemistry*, 40(3), 606-630.
+    - Comprehensive review linking PFAS to immune dysfunction, liver disease, kidney disease, cancer, and adverse reproductive outcomes.
+
+12. **Andrews, D.Q. and Naidenko, O.V. (2020).** "Population-Wide Exposure to Per- and Polyfluoroalkyl Substances from Drinking Water in the United States." *Environmental Science & Technology Letters*, 7(12), 931-936.
+    - Estimates 100+ million Americans exposed to PFAS-contaminated drinking water.
+
+13. **Hu, X.C., Andrews, D.Q., Lindstrom, A.B., et al. (2016).** "Detection of Poly- and Perfluoroalkyl Substances (PFASs) in U.S. Drinking Water Linked to Industrial Sites, Military Fire Training Areas, and Wastewater Treatment Plants." *Environmental Science & Technology Letters*, 3(10), 344-350.
+    - 6.5 million Americans served by water systems exceeding EPA's 70 ppt health advisory; contamination linked to industrial/military point sources.
+
+14. **U.S. EPA (2024).** *PFAS National Primary Drinking Water Regulation.* Final Rule, 89 FR 32532.
+    - First enforceable MCLs: 4 ppt for PFOA and PFOS, 10 ppt for PFHxS/PFNA/HFPO-DA. Compliance by 2029.
+
+15. **Shapira, R. and Zingales, L. (2017).** "Is Pollution Value-Maximizing? The DuPont Case." *NBER Working Paper* 23866.
+    - Analyzes DuPont's cost-benefit calculus for concealing C8 contamination; concludes concealment was privately rational but socially destructive.
+
+
+---
+
+## 3. Research Design
+
+### 3.1 Analysis 1 — National UCMR3 (Broad, Cross-Sectional)
+
+**Design:** Two-way fixed-effects difference-in-differences
+
+**Equation:**
+```
+log(ZHVI)_zt = B * (Exposed_z x Post_t) + a_z + g_t + e_zt
+```
+
+| Element | Description |
+|---------|-------------|
+| **Unit** | ZIP code x month |
+| **Treatment** | 583 ZIPs with any PFAS detection in UCMR3-tested public water systems |
+| **Control** | 6,996 ZIPs tested under UCMR3 with zero PFAS detections |
+| **Treatment date** | January 2016 (UCMR3 public release) |
+| **Outcome** | log(Zillow Home Value Index) |
+| **Fixed effects** | ZIP (absorbs geography, amenities, housing stock) + month (absorbs national trends, rates, seasonality) |
+| **Standard errors** | Clustered at ZIP level (Bertrand et al., 2004) |
+| **Identification** | Parallel trends in housing prices between tested-clean and tested-contaminated ZIPs, pre-2016 |
+
+**Event-study extension:**
+```
+log(ZHVI)_zt = Sum_{k != -1} B_k * (Exposed_z x 1{t - t* = k}) + a_z + g_t + e_zt
+```
+- Tests parallel trends via pre-treatment coefficients
+- Traces dynamic path of capitalization (gradual vs. immediate)
+
+### 3.2 Analysis 2 — DuPont C8 Case Study (Deep, Longitudinal)
+
+**Design:** Event-study with annual data, exploiting the litigation timeline
+
+**Equation:**
+```
+log(HPI)_zt = Sum_{k != 2000} B_k * (Treated_z x 1{year = k}) + a_z + g_t + e_zt
+```
+
+| Element | Description |
+|---------|-------------|
+| **Unit** | ZIP code x year |
+| **Treatment** | 6 ZIPs in the C8 contamination zone (Parkersburg WV, Vienna WV, Williamstown WV, Belpre OH, Marietta OH) |
+| **Control** | 886 OH/WV ZIPs with FHFA data |
+| **Information shocks** | 2001 (class action filed), 2005 (settlement), 2012 (cancer findings) |
+| **Reference year** | 2000 (last year before public knowledge) |
+| **Outcome** | log(FHFA House Price Index) |
+| **Pre-treatment window** | 1990-2000 (validates parallel trends) |
+| **Advantage** | Single point source, known contamination history, multiple identifiable information shocks, decade of pre-data before anyone knew |
+
+
+---
+
+## 4. Suggested Data
+
+### 4.1 Core Data (Already Acquired)
+
+| Dataset | Source | Coverage | Role |
+|---------|--------|----------|------|
+| **Zillow ZHVI** | Zillow Research | ZIP-level, monthly, 2000-2026, ~26K ZIPs | Outcome (national analysis) |
+| **EPA UCMR3 Occurrence Data** | EPA | 4,920 PWSIDs, 6 PFAS analytes, 2013-2015 | Treatment assignment (national) |
+| **UCMR3 ZIP Crosswalk** | EPA | PWSID-to-ZIP mapping, ~9,800 ZIPs | Links water systems to housing markets |
+| **FHFA House Price Index (ZIP5)** | FHFA | Annual, 1975-2024, ~19K ZIPs | Outcome (C8 case study) |
+
+
